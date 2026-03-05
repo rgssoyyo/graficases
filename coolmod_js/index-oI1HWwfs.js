@@ -1,0 +1,8 @@
+var n=(s,t,e)=>{if(!t.has(s))throw TypeError("Cannot "+e)};var l=(s,t,e)=>{if(t.has(s))throw TypeError("Cannot add the same private member more than once");t instanceof WeakSet?t.add(s):t.set(s,e)};var i=(s,t,e)=>(n(s,t,"access private method"),e);var r,c,o,a;class d{constructor(t=5e3){l(this,r);l(this,o);this.duration=t,this.msg="",this.toastDiv=document.querySelector(".toast"),this.toastDiv||(this.toastDiv=document.createElement("div"),this.toastDiv.setAttribute("class","toast toast-top toast-end top-[60px] z-[2147483501] break-words whitespace-normal min-w-0 w-auto max-w-[560px]"),document.body.appendChild(this.toastDiv))}static removeToast(){document.querySelectorAll(".toast .alert").forEach(e=>{e.remove()})}error(t){this.msg=t,this.type="alert-error",i(this,o,a).call(this)}success(t){this.msg=t,this.type="alert-success",i(this,o,a).call(this)}info(t){this.msg=t,this.type="alert-info",i(this,o,a).call(this)}}r=new WeakSet,c=function(){return`<div class="alert ${this.type} text-white text-sm lg:text-base lg:py-5 grid-flow-col">
+                    <span>${this.msg}</span>
+                    <span class="cursor-pointer">
+                        <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="icon-close">
+                            <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/>
+                        </svg>
+                    </span>
+                  </div>`},o=new WeakSet,a=function(){const t=document.createElement("div");t.innerHTML=i(this,r,c).call(this),this.toastDiv.appendChild(t),t.querySelector(".icon-close").addEventListener("click",()=>t.remove()),setTimeout(()=>t.remove(),this.duration)};export{d as T};

@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>graficasES - Explorador de GPUs y CPUs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Capas decorativas de fondo (gradientes y grid). -->
+  <div class="bg-glow"></div>
+  <div class="bg-grid"></div>
+
+  <!-- Encabezado principal y contexto del proyecto. -->
+  <header class="hero">
+    <div class="brand">graficasES</div>
+    <h1 id="pageTitle">Explorador de GPUs</h1>
+    <p id="pageSubtitle">Comparador de rendimiento relativo entre GPUs.</p>
+    <p class="hero-callout" id="cpuTestingNote">Juegos testeados en ultra settings 720p con una RTX 5090 para evitar cuello de botella por la grafica.</p>
+    <div class="hero-switch">
+      <div class="mode-switch" id="modeSwitch" role="tablist" aria-label="Selector de componente">
+        <button class="mode-btn is-active" type="button" data-mode="gpu">GPUs</button>
+        <button class="mode-btn" type="button" data-mode="cpu">CPUs</button>
+      </div>
+      <div class="mode-subswitch" id="cpuCategorySwitch" role="tablist" aria-label="Categoria CPU" hidden>
+        <button class="mode-btn is-active" type="button" data-category="games">Juegos</button>
+        <button class="mode-btn" type="button" data-category="apps">Apps</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Contenedor principal con dos paneles: listado base y rendimiento relativo. -->
+  <main class="grid">
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Listado base</h2>
+          <p class="meta" id="baseReference">Referencia: GeForce RTX 5090 = 100</p>
+        </div>
+        <div class="chip" id="totalCount">0 GPUs</div>
+      </div>
+
+      <!-- Controles de filtrado y calculo de relativo. -->
+      <div class="controls">
+        <label class="control">
+          <span id="filterLabel">Filtrar</span>
+          <input id="filterInput" type="text" placeholder="Buscar GPU" autocomplete="off" />
+        </label>
+        <label class="control">
+          <span id="baseLabel">GPU base</span>
+          <select id="baseSelect"></select>
+        </label>
+        <button id="calcBtn" type="button">Calcular relativo</button>
+      </div>
+
+      <!-- Tabla con scroll interno para el listado completo. -->
+      <div class="table-wrap" id="tableWrap">
+        <table id="gpuTable">
+          <thead>
+            <tr>
+              <th id="tableNameHeader">GPU</th>
+              <th class="action" id="tableActionHeader">CPUs recomendadas</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="table-empty" id="tableEmpty">Cargando listado...</div>
+      </div>
+    </section>
+
+    <!-- Panel secundario con la salida del calculo relativo. -->
+    <section class="panel accent">
+      <div class="panel-head">
+        <div>
+          <h2>Rendimiento relativo</h2>
+          <p class="meta" id="relativeMeta">Selecciona una base y pulsa calcular.</p>
+        </div>
+        <div class="chip ghost" id="relativeCount">0 resultados</div>
+      </div>
+      <div class="relative-list" id="relativeList">
+        <div class="empty">Sin datos todavia.</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2 id="compareTitle">Comparador</h2>
+          <p class="meta" id="compareHint">Arrastra GPUs desde el listado base.</p>
+        </div>
+      </div>
+      <div class="drop-zone" id="compareDrop">Arrastra aqui las GPUs que deseas comparar.</div>
+      <div class="compare-info">
+        <p class="meta" id="compareMeta">Base actual: -</p>
+        <div class="chip" id="compareCount">0 GPUs</div>
+      </div>
+      <div class="compare-list" id="compareList">
+        <div class="empty">Arrastra aqui las GPUs que deseas comparar.</div>
+      </div>
+      <div class="compare-insights" id="compareInsights">
+        <div class="empty">Agrega al menos 2 GPUs para comparar tecnologias.</div>
+      </div>
+    </section>
+
+    <section class="panel" id="legendPanel">
+      <div class="panel-head">
+        <div>
+          <h2>Leyenda</h2>
+          <p class="meta">Signos de mejora relativa.</p>
+        </div>
+      </div>
+      <div class="legend-stack">
+        <div class="legend-mode" data-mode="gpu">
+          <div class="legend-row">
+            <span class="legend-symbol">&gt;</span>
+            <span>algo mejor</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-symbol">&gt;&gt;</span>
+            <span>bastante mejor (2 saltos)</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-symbol">&gt;&gt;&gt;</span>
+            <span>en otra liga (3+ saltos)</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-symbol">&gt;&gt;&gt;+</span>
+            <span>diferencia enorme</span>
+          </div>
+
+          <div class="legend-section">
+            <h3>Upscalers (calidad)</h3>
+            <div class="legend-chain">DLSS 4.5 &gt; DLSS 4.0 &gt; FSR 4 &gt; DLSS 3 &gt; XeSS &gt; FSR 3</div>
+          </div>
+
+          <div class="legend-section">
+            <h3>Frame Generation</h3>
+            <div class="legend-chain">DLSS MFG &gt; DLSS FG &gt; FSR FG = XeSS FG &gt;&gt; sin frame gen nativo</div>
+          </div>
+
+          <div class="legend-section">
+            <h3>Latencia</h3>
+            <div class="legend-chain">NVIDIA Reflex &gt; Intel XeLL &gt; AMD Anti-Lag</div>
+          </div>
+
+          <div class="legend-section">
+            <h3>Ray Reconstruction</h3>
+            <div class="legend-chain">RR &gt;&gt;&gt;+ sin RR (solo denoiser del juego)</div>
+          </div>
+
+          <div class="legend-section">
+            <h3>Soporte de juegos (dia 1)</h3>
+            <div class="legend-chain">DLSS &gt;&gt; FSR &gt;&gt; XeSS</div>
+          </div>
+        </div>
+        <div class="legend-mode" data-mode="cpu" hidden>
+          <div class="legend-row">
+            <span class="legend-symbol">&gt;</span>
+            <span>algo mejor (5%+)</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-symbol">&gt;&gt;</span>
+            <span>mejor claro (10%+)</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-symbol">&gt;&gt;&gt;</span>
+            <span>muy por encima (18%+)</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-symbol">&gt;&gt;&gt;+</span>
+            <span>brecha enorme (28%+)</span>
+          </div>
+
+          <div class="legend-section">
+            <h3>Categoria CPU</h3>
+            <div class="legend-chain">Apps: rendimiento en aplicaciones. Juegos: rendimiento en gaming.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Pie con recordatorio de endpoints disponibles. -->
+  <footer class="foot">
+    <span id="endpointsText">Endpoints activos: /gpus, /gpus/relative/{nombreBase}, /gpus/market/{nombre}, /gpus/market/{nombre}/refresh, /gpus/market/refresh-all, /cpus/apps, /cpus/apps/relative/{nombreBase}, /cpus/games, /cpus/games/relative/{nombreBase}</span>
+  </footer>
+
+  <!-- Modal de CPUs recomendadas. -->
+  <div class="modal" id="cpuModal" hidden>
+    <div class="modal-backdrop" data-close="true"></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="cpuModalTitle">
+      <button class="modal-close" id="cpuModalClose" type="button" aria-label="Cerrar">&times;</button>
+      <div class="modal-head">
+        <h3 id="cpuModalTitle">CPUs recomendadas</h3>
+        <p class="modal-sub" id="cpuModalSubtitle">-</p>
+      </div>
+      <div class="modal-grid">
+        <div class="modal-item">
+          <span class="label">M&iacute;nimo</span>
+          <span class="value" id="cpuModalMin">-</span>
+        </div>
+        <div class="modal-item">
+          <span class="label">Recomendado</span>
+          <span class="value" id="cpuModalRec">-</span>
+        </div>
+        <div class="modal-item">
+          <span class="label">M&aacute;ximo</span>
+          <span class="value" id="cpuModalMax">-</span>
+        </div>
+      </div>
+      <section class="modal-info" aria-label="Informacion sobre recomendaciones de CPU">
+        <h4>Informaci&oacute;n</h4>
+        <ul class="modal-info-list">
+          <li>
+            <strong>M&iacute;nimo:</strong>
+            Se acepta que esta CPU puede causar un cuello de botella ligero o moderado en algunos juegos, pero la mayor&iacute;a funcionar&aacute; sin problema.
+          </li>
+          <li>
+            <strong>Recomendado:</strong>
+            Es el equilibrio calidad-precio perfecto: la inmensa mayor&iacute;a de juegos no tendr&aacute; cuello de botella y el precio es acorde al de la gr&aacute;fica.
+          </li>
+          <li>
+            <strong>M&aacute;ximo:</strong>
+            Es la CPU de gama m&aacute;s alta que tiene sentido para esta gr&aacute;fica (no se toma en cuenta la calidad-precio, pero s&iacute; evitar usar una CPU todav&iacute;a m&aacute;s alta si una menos potente ya va sobrada para la gr&aacute;fica seleccionada).
+          </li>
+        </ul>
+      </section>
+    </div>
+  </div>
+
+  <!-- Logica del frontend (fetch + render). -->
+  <script src="app.js?v=20260303"></script>
+</body>
+</html>

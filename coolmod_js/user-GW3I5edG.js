@@ -1,0 +1,1 @@
+import{A as r,B as e}from"./index-eSH7xKgO.js";const n=r(()=>{{const s=e("user-logged",!1,sessionStorage),o=!1,t=e("user-info",{},sessionStorage);return{userLogged:s,userInfo:t,userInfoRequested:o}}});export{n as u};

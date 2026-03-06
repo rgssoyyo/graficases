@@ -21,9 +21,9 @@ public class PcBoxPriceProvider implements GpuPriceProvider {
     private static final String CURRENCY = "EUR";
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36";
 
-    // Limite del endpoint: _to no puede ser 50 (devuelve 400). Usamos un rango conservador.
+    // Limite del endpoint: _to no puede ser 50 (devuelve 400). 49 suele funcionar.
     private static final int FROM = 0;
-    private static final int TO = 24;
+    private static final int TO = 49;
 
     private final ObjectMapper objectMapper;
 
@@ -41,7 +41,8 @@ public class PcBoxPriceProvider implements GpuPriceProvider {
         String url = "https://www.pcbox.com/api/catalog_system/pub/products/search"
                 + "?ft=" + encode(spec.query())
                 + "&_from=" + FROM
-                + "&_to=" + TO;
+                + "&_to=" + TO
+                + "&O=OrderByPriceASC";
 
         Connection.Response response = Jsoup.connect(url)
                 .ignoreContentType(true)

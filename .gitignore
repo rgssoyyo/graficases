@@ -7,3 +7,12 @@
 # Maven / build output
 target/
 
+# Local runtime data / scratch
+data/
+*.mv.db
+*.trace.db
+
+# Local scraping/debug artifacts (untracked)
+pcc_*.js
+pcc_*.json
+df_*.json

@@ -157,7 +157,7 @@ public class GpuMarketInfoService {
             return new GpuMarketInfo(
                     nombreGpu,
                     GpuMarketStatus.AVAILABLE,
-                    "disponible a partir de " + formatted,
+                    "desde " + formatted + " en " + best.store(),
                     best.price(),
                     best.currency(),
                     best.store(),

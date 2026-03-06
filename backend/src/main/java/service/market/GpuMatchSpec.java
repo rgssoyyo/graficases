@@ -184,6 +184,22 @@ public final class GpuMatchSpec {
         return memoryGb;
     }
 
+    /**
+     * Modelo "base" en formato compacto (ej: RTX5080, RX7900).
+     * Útil para integraciones con filtros/catálogos externos.
+     */
+    public String modelBaseCompact() {
+        return modelBaseCompact;
+    }
+
+    /**
+     * Modelo completo en formato compacto (ej: RTX5070TI, RTX4080SUPER, RX7900XTX).
+     * Útil para integraciones con filtros/catálogos externos.
+     */
+    public String modelFullCompact() {
+        return modelFullCompact;
+    }
+
     public boolean matchesTitle(String title) {
         if (title == null || title.isBlank()) {
             return false;

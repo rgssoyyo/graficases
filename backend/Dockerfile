@@ -2,10 +2,11 @@ FROM eclipse-temurin:21-jdk
 
 WORKDIR /app
 
-COPY . .
+COPY backend .
 
-RUN chmod +x mvnw && ./mvnw package -DskipTests
+RUN chmod +x mvnw
+RUN ./mvnw package -DskipTests
 
 EXPOSE 8080
 
-CMD ["java","-jar","target/*.jar"]
+CMD ["java","-jar","/app/target/backend-0.0.1-SNAPSHOT.jar"]

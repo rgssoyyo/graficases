@@ -1,9 +1,7 @@
 package com.graficases.backend.service.market;
 
+import org.jsoup.Connection;
 import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.parser.Parser;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -15,16 +13,19 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * PCBox (VTEX) bloquea el endpoint JSON para bots, pero expone un ItemList JSON-LD
- * en el HTML del buscador.
+ * PCBox expone un endpoint VTEX estable para busqueda de catalogo con orden por precio.
  */
 @Component
 public class PcBoxPriceProvider implements GpuPriceProvider {
 
     private static final String STORE = "PCBox";
     private static final String CURRENCY = "EUR";
-    private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36";
-    private static final int MAX_PAGES = 4;
+    private static final String SEARCH_ENDPOINT =
+            "https://www.pcbox.com/api/io/_v/api/intelligent-search/product_search/trade-policy/1";
+    private static final String USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36";
+    private static final int PAGE_SIZE = 24;
+    private static final int MAX_PAGES = 3;
 
     private static final List<String> GPU_HINTS = List.of(
             "TARJETA", "GRAFICA", "GPU", "GEFORCE", "RADEON", "ARC", "GRAPHICSCARD"
@@ -32,12 +33,12 @@ public class PcBoxPriceProvider implements GpuPriceProvider {
 
     private static final List<String> NON_GPU_HINTS = List.of(
             "PORTATIL", "LAPTOP", "NOTEBOOK", "ORDENADOR", "SOBREMESA", "WORKSTATION",
-            "ALLINONE", "MINIPC", "SERVIDOR", "CPU", "TABLET"
+            "ALLINONE", "MINIPC", "SERVIDOR", "CPU", "TABLET", "MONITOR"
     );
 
     private static final List<String> NON_GPU_URL_HINTS = List.of(
             "portatil", "ordenador", "sobremesa", "workstation", "all-in-one",
-            "allinone", "mini-pc", "cpu-", "servidor", "tablet"
+            "allinone", "mini-pc", "cpu-", "servidor", "tablet", "monitor"
     );
 
     private final ObjectMapper objectMapper;
@@ -53,109 +54,78 @@ public class PcBoxPriceProvider implements GpuPriceProvider {
 
     @Override
     public Optional<PriceQuote> findLowestPrice(GpuMatchSpec spec) throws Exception {
-        BigDecimal best = null;
-        String bestUrl = null;
+        int totalPages = MAX_PAGES;
 
-        for (int page = 1; page <= MAX_PAGES; page++) {
-            String url = "https://www.pcbox.com/buscar/" + encode(spec.query())
-                    + "?map=ft"
-                    + "&page=" + page;
-
-            Document doc = Jsoup.connect(url)
-                    .userAgent(USER_AGENT)
-                    .timeout(10000)
-                    .followRedirects(true)
-                    .get();
-
-            PageScanResult result = scanPage(doc, spec);
-            if (!result.sawResults()) {
+        for (int page = 1; page <= totalPages; page++) {
+            JsonNode root = fetchSearchPage(spec, page);
+            JsonNode products = root.path("products");
+            if (!products.isArray() || products.isEmpty()) {
                 break;
             }
 
-            if (result.quote().isEmpty()) {
-                continue;
+            PriceQuote firstMatch = findFirstMatchingQuote(products, spec);
+            if (firstMatch != null) {
+                return Optional.of(firstMatch);
             }
 
-            PriceQuote quote = result.quote().get();
-            if (best == null || quote.price().compareTo(best) < 0) {
-                best = quote.price();
-                bestUrl = quote.productUrl();
+            int discoveredPages = root.path("pagination").path("count").asInt(0);
+            if (discoveredPages > 0) {
+                totalPages = Math.min(MAX_PAGES, discoveredPages);
             }
         }
 
-        if (best == null) {
-            return Optional.empty();
-        }
-
-        return Optional.of(new PriceQuote(best, CURRENCY, STORE, bestUrl, Instant.now()));
+        return Optional.empty();
     }
 
-    private PageScanResult scanPage(Document doc, GpuMatchSpec spec) {
-        BigDecimal best = null;
-        String bestUrl = "";
-        boolean sawResults = false;
+    private JsonNode fetchSearchPage(GpuMatchSpec spec, int page) throws Exception {
+        String url = SEARCH_ENDPOINT
+                + "?query=" + encode(spec.query())
+                + "&page=" + page
+                + "&count=" + PAGE_SIZE
+                + "&sort=price:asc";
 
-        for (Element script : doc.select("script[type=application/ld+json]")) {
-            String json = script.data();
-            if (json == null || json.isBlank()) {
-                continue;
-            }
+        Connection.Response response = Jsoup.connect(url)
+                .ignoreContentType(true)
+                .ignoreHttpErrors(true)
+                .userAgent(USER_AGENT)
+                .header("Accept", "application/json")
+                .header("Accept-Language", "es-ES,es;q=0.9,en;q=0.8")
+                .timeout(9000)
+                .followRedirects(true)
+                .execute();
 
-            JsonNode root;
-            try {
-                root = objectMapper.readTree(json);
-            } catch (Exception ignored) {
-                continue;
-            }
-
-            if (!"ItemList".equalsIgnoreCase(text(root, "@type"))) {
-                continue;
-            }
-
-            JsonNode items = root.path("itemListElement");
-            if (!items.isArray()) {
-                continue;
-            }
-            if (!items.isEmpty()) {
-                sawResults = true;
-            }
-
-            for (JsonNode wrapper : items) {
-                JsonNode item = wrapper.path("item");
-                if (item.isMissingNode() || item.isNull()) {
-                    continue;
-                }
-
-                String title = decodeHtmlEntities(text(item, "name"));
-                String productUrl = text(item, "@id");
-
-                if (!isLikelyGpuItem(title, productUrl, spec)) {
-                    continue;
-                }
-
-                BigDecimal price = readLowestInStockPrice(item);
-                if (price == null) {
-                    continue;
-                }
-
-                if (best == null || price.compareTo(best) < 0) {
-                    best = price;
-                    bestUrl = productUrl;
-                }
-            }
+        if (response.statusCode() >= 400) {
+            throw new IllegalStateException("PCBox devolvio HTTP " + response.statusCode());
         }
 
-        if (best == null) {
-            return new PageScanResult(sawResults, Optional.empty());
-        }
-
-        return new PageScanResult(
-                sawResults,
-                Optional.of(new PriceQuote(best, CURRENCY, STORE, bestUrl, Instant.now()))
-        );
+        return objectMapper.readTree(response.body());
     }
 
-    private static boolean isLikelyGpuItem(String title, String productUrl, GpuMatchSpec spec) {
+    PriceQuote findFirstMatchingQuote(JsonNode products, GpuMatchSpec spec) {
+        for (JsonNode product : products) {
+            String title = firstNonBlank(
+                    text(product, "productName"),
+                    text(product, "productTitle"),
+                    text(product, "description")
+            );
+
+            String productUrl = absoluteUrl(text(product, "link"));
+            if (!isLikelyGpuProduct(title, productUrl, product, spec)) {
+                continue;
+            }
+
+            BigDecimal price = readLowestInStockPrice(product);
+            if (price == null) {
+                continue;
+            }
+
+            return new PriceQuote(price, CURRENCY, STORE, productUrl, Instant.now());
+        }
+
+        return null;
+    }
+
+    private static boolean isLikelyGpuProduct(String title, String productUrl, JsonNode product, GpuMatchSpec spec) {
         if (title == null || title.isBlank()) {
             return false;
         }
@@ -165,6 +135,7 @@ public class PcBoxPriceProvider implements GpuPriceProvider {
 
         String compactTitle = GpuMatchSpec.toCompact(title);
         String lowerUrl = productUrl == null ? "" : productUrl.toLowerCase(Locale.ROOT);
+        String compactCategories = compactCategories(product.path("categories"));
 
         if (containsAny(compactTitle, NON_GPU_HINTS)) {
             return false;
@@ -173,68 +144,69 @@ public class PcBoxPriceProvider implements GpuPriceProvider {
             return false;
         }
 
+        if (compactCategories.contains("TARJETASGRAFICAS") || compactCategories.contains("TARJETAGRAFICA")) {
+            return true;
+        }
+
         return lowerUrl.contains("tarjeta-grafica") || containsAny(compactTitle, GPU_HINTS);
     }
 
-    private static boolean containsAny(String text, List<String> tokens) {
-        if (text == null || text.isBlank()) {
-            return false;
-        }
-        for (String token : tokens) {
-            if (text.contains(token)) {
-                return true;
-            }
-        }
-        return false;
-    }
+    private static BigDecimal readLowestInStockPrice(JsonNode product) {
+        BigDecimal best = null;
 
-    private static BigDecimal readLowestInStockPrice(JsonNode item) {
-        JsonNode offersRoot = item.path("offers");
-        if (offersRoot.isMissingNode() || offersRoot.isNull()) {
+        JsonNode items = product.path("items");
+        if (!items.isArray()) {
             return null;
         }
 
-        BigDecimal best = null;
+        for (JsonNode item : items) {
+            JsonNode sellers = item.path("sellers");
+            if (!sellers.isArray()) {
+                continue;
+            }
 
-        JsonNode offers = offersRoot.path("offers");
-        if (offers.isArray()) {
-            for (JsonNode offer : offers) {
-                if (!isInStock(offer)) {
+            for (JsonNode seller : sellers) {
+                JsonNode offer = seller.path("commertialOffer");
+                if (!isAvailable(offer)) {
                     continue;
                 }
-                BigDecimal price = asBigDecimal(offer.get("price"));
+
+                BigDecimal price = firstPrice(
+                        offer.get("Price"),
+                        offer.get("spotPrice"),
+                        offer.get("PriceWithoutDiscount"),
+                        offer.get("ListPrice")
+                );
                 if (price == null) {
                     continue;
                 }
+
                 if (best == null || price.compareTo(best) < 0) {
                     best = price;
                 }
             }
         }
 
-        if (best != null) {
-            return best;
-        }
-
-        // Fallback para casos en los que solo venga aggregate offer sin lista interna.
-        if (isInStock(offersRoot)) {
-            BigDecimal direct = asBigDecimal(offersRoot.get("price"));
-            if (direct != null) {
-                return direct;
-            }
-
-            BigDecimal low = asBigDecimal(offersRoot.get("lowPrice"));
-            if (low != null) {
-                return low;
-            }
-        }
-
-        return null;
+        return best;
     }
 
-    private static boolean isInStock(JsonNode offerNode) {
-        String availability = text(offerNode, "availability").toLowerCase(Locale.ROOT);
-        return availability.contains("instock");
+    private static boolean isAvailable(JsonNode offer) {
+        if (offer == null || offer.isMissingNode() || offer.isNull()) {
+            return false;
+        }
+
+        JsonNode quantity = offer.get("AvailableQuantity");
+        return quantity != null && quantity.isNumber() && quantity.asInt(0) > 0;
+    }
+
+    private static BigDecimal firstPrice(JsonNode... nodes) {
+        for (JsonNode node : nodes) {
+            BigDecimal parsed = asBigDecimal(node);
+            if (parsed != null) {
+                return parsed;
+            }
+        }
+        return null;
     }
 
     private static BigDecimal asBigDecimal(JsonNode node) {
@@ -257,16 +229,49 @@ public class PcBoxPriceProvider implements GpuPriceProvider {
         }
     }
 
-    private static String decodeHtmlEntities(String raw) {
-        if (raw == null || raw.isBlank()) {
+    private static String compactCategories(JsonNode categoriesNode) {
+        if (!categoriesNode.isArray()) {
             return "";
         }
-        return Parser.unescapeEntities(raw, false);
+
+        StringBuilder sb = new StringBuilder();
+        for (JsonNode category : categoriesNode) {
+            sb.append(GpuMatchSpec.toCompact(category.asText("")));
+        }
+        return sb.toString();
+    }
+
+    private static boolean containsAny(String text, List<String> tokens) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        for (String token : tokens) {
+            if (text.contains(token)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String text(JsonNode node, String field) {
-        JsonNode v = node.get(field);
-        return v == null || v.isNull() ? "" : v.asText("");
+        JsonNode value = node.get(field);
+        return value == null || value.isNull() ? "" : value.asText("");
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private static String absoluteUrl(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        return raw.startsWith("http") ? raw : "https://www.pcbox.com" + raw;
     }
 
     private static String encode(String raw) {
@@ -274,8 +279,5 @@ public class PcBoxPriceProvider implements GpuPriceProvider {
             return "";
         }
         return java.net.URLEncoder.encode(raw, java.nio.charset.StandardCharsets.UTF_8);
-    }
-
-    private record PageScanResult(boolean sawResults, Optional<PriceQuote> quote) {
     }
 }
